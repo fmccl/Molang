@@ -1,9 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    interpreter::Value,
-    token::{Operator, Token},
-    tokeniser::tokenise, CompileError,
+    data::Operator, Value, tokeniser::{tokenise, Access, Token}, CompileError
 };
 
 #[derive(Debug, PartialEq)]
@@ -18,12 +16,18 @@ pub enum Instruction {
     Subtract(Expr, Expr),
     Multiply(Expr, Expr),
     Divide(Expr, Expr),
-    Variable(String),
-    FunctionCall(String, Vec<Expr>),
+    Access(Vec<AccessExpr>),
     Conditional(Expr, Expr),
     Colon(Expr, Expr),
     NullishCoalescing(Expr, Expr),
     Not(Expr),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum AccessExpr {
+    Name(String),
+    Index(Expr),
+    Call(Vec<Expr>)
 }
 
 pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
@@ -75,19 +79,24 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
     } else {
         match tokens {
             [Token::Number(n)] => return Ok(Expr::Literal(Value::Number(*n))),
-            [Token::Variable(name)] => {
-                return Ok(Expr::Derived(Box::new(Instruction::Variable(name.clone()))))
-            }
-            [Token::Function(name, args)] => {
-                let mut e_args = Vec::new();
-                for tokens in comma_split(args) {
-                    e_args.push(treeify(tokens)?);
+            [Token::Access(accesses)] => {
+                let mut access_exprs = Vec::new();
+                for access in accesses {
+                    match access {
+                        Access::Call(all_args_tokens) => {
+                            let mut args: Vec<Expr> = Vec::new();
+                            let args_tokens = comma_split(all_args_tokens);
+                            for arg_tokens in args_tokens {
+                                args.push(treeify(arg_tokens)?);
+                            }
+                            access_exprs.push(AccessExpr::Call(args));
+                        }
+                        Access::Name(name) => access_exprs.push(AccessExpr::Name(name.clone())),
+                        Access::Index(tokens) => access_exprs.push(AccessExpr::Index(treeify(tokens)?))
+                    }
                 }
-                return Ok(Expr::Derived(Box::new(Instruction::FunctionCall(
-                    name.clone(),
-                    e_args
-                ))))
-            }
+                Ok(Expr::Derived(Box::new(Instruction::Access(access_exprs))))
+            },
             a => {
                 panic!("Unparsable tokens: {a:?}")
             }
@@ -115,18 +124,4 @@ fn comma_split<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token]> {
     }
 
     result
-}
-
-#[test]
-fn it_works() {
-    assert_eq!(
-        Expr::Derived(Box::new(Instruction::FunctionCall(
-            "max".to_string(),
-            vec![
-                Expr::Derived(Box::new(Instruction::Variable("a".to_string()))),
-                Expr::Literal(Value::Number(10.0))
-            ]
-        ))),
-        treeify(tokenise("max(a, 10)").as_slice()).unwrap()
-    )
 }

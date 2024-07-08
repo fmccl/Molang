@@ -1,14 +1,3 @@
-#[derive(Debug, PartialEq, Clone)]
-pub enum Token {
-    Number(f32),
-    Operator(Operator),
-    OpenBracket,
-    CloseBracket,
-    Variable(String),
-    Function(String, Vec<Token>),
-    Comma,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operator {
     NullishCoalescing,
@@ -18,7 +7,7 @@ pub enum Operator {
     Multiply,
     Add,
     Subtract,
-    Not,
+    Not
 }
 
 impl Operator {

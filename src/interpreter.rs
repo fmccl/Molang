@@ -1,13 +1,8 @@
-use std::{any::TypeId, collections::HashMap, error, hash::Hash};
+use std::{any::TypeId, cell::RefCell, collections::HashMap, error, fmt::{format, Debug}, hash::Hash, rc::Rc};
 
 use thiserror::Error;
 
-use crate::{compile, parser::Instruction, Expr};
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Value {
-    Number(f32),
-}
+use crate::{compile, parser::{AccessExpr, Instruction}, value::Function, Expr, Value};
 
 #[derive(Error, Debug)]
 pub enum MolangError {
@@ -21,13 +16,18 @@ pub enum MolangError {
     VariableNotFound(String),
 
     #[error("Syntax error: `{0}`")]
-    SyntaxError(String)
+    SyntaxError(String),
+
+    #[error("Type error: expected `{0}` got `{1}`")]
+    TypeError(String, String),
+
+    #[error("Cannot access values of `{1}` by `{0}`")]
+    BadAccess(String, String)
 }
 
 pub fn run(
     expr: &Expr,
-    functions: &HashMap<&str, &dyn Fn(Vec<Value>) -> Result<Value, MolangError>>,
-    variables: &HashMap<&str, Value>,
+    constants: &HashMap<String, Value>,
 ) -> Result<Value, MolangError> {
     match expr {
         Expr::Literal(expr) => Ok(expr.clone()),
@@ -38,11 +38,13 @@ pub fn run(
                 | Instruction::Subtract(left, right)
                 | Instruction::Multiply(left, right)
                 | Instruction::Divide(left, right) => {
-                    let left = match run(left, functions, variables)? {
+                    let left = match run(left, constants)? {
                         Value::Number(n) => n,
+                        a => return Err(MolangError::TypeError("Number".to_string(), format!("{a:?}")))
                     };
-                    let right = match run(right, functions, variables)? {
+                    let right = match run(right, constants)? {
                         Value::Number(n) => n,
+                        a => return Err(MolangError::TypeError("Number".to_string(), format!("{a:?}")))
                     };
                     Ok(Value::Number(match i {
                         Instruction::Add(_, _) => left + right,
@@ -52,24 +54,41 @@ pub fn run(
                         _ => unreachable!(),
                     }))
                 }
-                Instruction::FunctionCall(name, args) => {
-                    let mut v_args = Vec::new();
-                    for arg in args {
-                        v_args.push(run(arg, functions, variables)?);
+                Instruction::Access(accesses) => {
+                    let mut current = Value::Null;
+
+                    for access in accesses {
+                        match access {
+                            AccessExpr::Name(name) => {
+                                if let Value::Null = current {
+                                    current = constants.get(name).ok_or(MolangError::VariableNotFound(name.clone()))?.clone();
+                                } else if let Value::Struct(struc) = current {
+                                    current = struc.get(name).ok_or(MolangError::VariableNotFound(name.clone()))?.clone();
+                                } else {
+                                    return Err(MolangError::BadAccess(".".to_string(), format!("{current:?}")))
+                                }
+                            }
+                            AccessExpr::Index(_) => todo!(),
+                            AccessExpr::Call(args) => {
+                                if let Value::Function(function) = current {
+                                    let mut v_args = Vec::new();
+                                    for arg in args {
+                                        v_args.push(run(arg, constants)?)
+                                    }
+                                    current = function.f.borrow_mut()(v_args)?;
+                                } else {
+                                    return Err(MolangError::BadAccess("()".to_string(), format!("{current:?}")))
+                                }
+                            },
+                        }
                     }
-                    let func = functions.get(name.as_str());
-                    match func {
-                        Some(func) => func(v_args),
-                        None => Err(MolangError::FunctionNotFound(name.clone())),
-                    }
+
+                    Ok(current)
                 }
-                Instruction::Variable(name) => Ok(variables
-                    .get(name.as_str())
-                    .ok_or(MolangError::VariableNotFound(name.clone()))?
-                    .clone()),
                 Instruction::Conditional(left, right) => {
-                    let left = match run(left, functions, variables)? {
+                    let left = match run(left, constants)? {
                         Value::Number(n) => n,
+                        a => return Err(MolangError::TypeError("Number".to_string(), format!("{a:?}")))
                     };
 
                     let (if_true, if_false) = match right {
@@ -83,16 +102,22 @@ pub fn run(
                     };
 
                     if left == 0.0 {
-                        run(if_false, functions, variables)
+                        run(if_false, constants)
                     } else {
-                        run(if_true, functions, variables)
+                        run(if_true, constants)
                     }
                 },
-                Instruction::NullishCoalescing(_, _) => todo!(),
+                Instruction::NullishCoalescing(left, right) => {
+                    match run(left, constants)? {
+                        Value::Null => run(right, constants),
+                        a => Ok(a)
+                    }
+                },
                 Instruction::Colon(_, _) => Err(MolangError::SyntaxError("Unexpected colon".to_string())),
                 Instruction::Not(expr) => {
-                    let n = match run(expr, functions, variables)? {
+                    let n = match run(expr, constants)? {
                         Value::Number(n) => n,
+                        a => return Err(MolangError::TypeError("Number".to_string(), format!("{a:?}")))
                     };
                     if n == 0.0 {
                         Ok(Value::Number(1.0))
@@ -107,36 +132,46 @@ pub fn run(
 
 #[test]
 fn function() {
-    let mut functions: HashMap<&str, &dyn Fn(Vec<Value>) -> Result<Value, MolangError>> =
-        HashMap::new();
     
-    functions.insert("max", &|args| {
-        let mut biggest: Option<f32> = None;
+    let mut constants = HashMap::new();
 
-        for arg in args {
+    let mut math = HashMap::new();
 
-            if let Value::Number(num) = arg {
-
-                match biggest {
-                    None => biggest = Some(num),
-                    Some(big) if num > big => biggest = Some(num),
-                    _ => {}
+    math.insert("max".into(), Value::Function(
+        Function { 
+            f: Rc::new(RefCell::new(
+                |args| {
+                    let mut biggest: Option<f32> = None;
+            
+                    for arg in args {
+            
+                        if let Value::Number(num) = arg {
+            
+                            match biggest {
+                                None => biggest = Some(num),
+                                Some(big) if num > big => biggest = Some(num),
+                                _ => {}
+                            }
+            
+                        } else {
+                            return Err(MolangError::FunctionError("Expected a number".into()));
+                        }
+                    }
+                    
+                    Ok(Value::Number(biggest.ok_or(MolangError::FunctionError(
+                        "No arguments passed to max".into(),
+                    ))?))
+            
                 }
-
-            } else {
-                return Err(MolangError::FunctionError("Expected a number".into()));
-            }
+            ))
         }
-        
-        Ok(Value::Number(biggest.ok_or(MolangError::FunctionError(
-            "No arguments passed to max".into(),
-        ))?))
+    ));
 
-    });
+    constants.insert("math".to_string(), Value::Struct(math));
 
     assert_eq!(
         Value::Number(500.0),
-        run(&compile("max(1, 5, 2) * 100").unwrap(), &functions, &HashMap::new()).unwrap()
+        run(&compile("math.max(1, 5, 2) * 100").unwrap(), &constants).unwrap()
     );
 }
 
@@ -145,15 +180,15 @@ fn constant() {
     
     let mut constants = HashMap::new();
 
-    constants.insert("pi", Value::Number(3.14));
+    constants.insert("pi".to_string(), Value::Number(3.14));
 
     assert_eq!(
-        Value::Number(500.0),
-        run(&compile("max(1, 5, 2) * 100").unwrap(), &HashMap::new(), &constants).unwrap()
+        Value::Number(3.14*100.),
+        run(&compile("pi * 100").unwrap(), &constants).unwrap()
     );
 }
 
 #[test]
 fn ternary_not() {
-    assert_eq!(Value::Number(200.0), run(&compile("!1 ? 100 : 200").unwrap(), &HashMap::new(), &HashMap::new()).unwrap());
+    assert_eq!(Value::Number(200.0), run(&compile("!1 ? 100 : 200").unwrap(), &HashMap::new()).unwrap());
 }
