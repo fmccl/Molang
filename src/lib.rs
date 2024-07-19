@@ -6,7 +6,7 @@ mod tokeniser;
 mod value;
 
 pub use interpreter::run;
-use molang_proc_macro::MolangStruct;
+pub use molang_proc_macro::MolangStruct;
 pub use parser::Expr;
 use thiserror::Error;
 pub use value::FromMolangValue;

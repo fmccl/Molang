@@ -1,7 +1,6 @@
-use std::collections::VecDeque;
 
 use crate::{
-    data::Operator, Value, tokeniser::{tokenise, Access, Token}, CompileError
+    data::Operator, Value, tokeniser::{Access, Token}, CompileError
 };
 
 #[derive(Debug, PartialEq)]

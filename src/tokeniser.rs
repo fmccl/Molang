@@ -1,8 +1,11 @@
-use std::{collections::VecDeque, default::Default, fmt::Display};
+use std::{default::Default, fmt::Display};
 
 use thiserror::Error;
 
-use crate::{data::Operator, state::{SequenceAction, State}};
+use crate::{
+    data::Operator,
+    state::{SequenceAction, State},
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
@@ -18,11 +21,11 @@ pub enum Token {
 pub enum Access {
     Name(String),
     Index(Vec<Token>),
-    Call(Vec<Token>)
+    Call(Vec<Token>),
 }
 
 #[derive(Error, Debug)]
-enum TokeniseError {
+pub enum TokeniseError {
     Expectation { found: String, expected: String },
 }
 
@@ -38,7 +41,14 @@ impl State<char, Token, TokeniseError> for NormalState {
     fn handle(
         &mut self,
         c: Option<char>,
-    ) -> Result<(Option<Token>, Option<Box<dyn State<char, Token, TokeniseError>>>, SequenceAction), TokeniseError> {
+    ) -> Result<
+        (
+            Option<Token>,
+            Option<Box<dyn State<char, Token, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
         match c {
             Some(c) if c.is_numeric() => Ok((
                 None,
@@ -51,8 +61,10 @@ impl State<char, Token, TokeniseError> for NormalState {
             Some(c) if c.is_alphabetic() => Ok((
                 None,
                 Some(Box::new(AccessTokenState {
-                    state: Box::new(IdentifierState {..Default::default()}),
-                    accesses: Vec::new()
+                    state: Box::new(IdentifierState {
+                        ..Default::default()
+                    }),
+                    accesses: Vec::new(),
                 })),
                 SequenceAction::Hold,
             )),
@@ -94,17 +106,25 @@ impl State<char, Token, TokeniseError> for NormalState {
             Some('(') => Ok((Some(Token::OpenBracket), None, SequenceAction::Advance)),
             Some(')') => Ok((Some(Token::CloseBracket), None, SequenceAction::Advance)),
 
-            Some('?') => Ok((None, Some(Box::new(DoubleState{
-                target: '?',
-                result_single: Token::Operator(Operator::Conditional),
-                result_double: Token::Operator(Operator::NullishCoalescing),
-            })), SequenceAction::Advance)),
+            Some('?') => Ok((
+                None,
+                Some(Box::new(DoubleState {
+                    target: '?',
+                    result_single: Token::Operator(Operator::Conditional),
+                    result_double: Token::Operator(Operator::NullishCoalescing),
+                })),
+                SequenceAction::Advance,
+            )),
 
-            Some('=') => Ok((None, Some(Box::new(DoubleState{
-                target: '=',
-                result_single: Token::Operator(Operator::Assignment),
-                result_double: Token::Operator(Operator::Equality),
-            })), SequenceAction::Advance)),
+            Some('=') => Ok((
+                None,
+                Some(Box::new(DoubleState {
+                    target: '=',
+                    result_single: Token::Operator(Operator::Assignment),
+                    result_double: Token::Operator(Operator::Equality),
+                })),
+                SequenceAction::Advance,
+            )),
 
             Some(c) => Err(TokeniseError::Expectation {
                 found: c.to_string(),
@@ -124,7 +144,14 @@ impl State<char, Token, TokeniseError> for NumberState {
     fn handle(
         &mut self,
         c: Option<char>,
-    ) -> Result<(Option<Token>, Option<Box<dyn State<char, Token, TokeniseError>>>, SequenceAction), TokeniseError> {
+    ) -> Result<
+        (
+            Option<Token>,
+            Option<Box<dyn State<char, Token, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
         match c {
             Some(c) if c.is_numeric() => {
                 self.string.push(c);
@@ -164,8 +191,14 @@ impl State<char, Token, TokeniseError> for AccessTokenState {
     fn handle(
         &mut self,
         c: Option<char>,
-    ) -> Result<(Option<Token>, Option<Box<dyn State<char, Token, TokeniseError>>>, SequenceAction), TokeniseError> {
-
+    ) -> Result<
+        (
+            Option<Token>,
+            Option<Box<dyn State<char, Token, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
         let (access, new_state, action) = self.state.handle(c)?;
 
         match access {
@@ -176,12 +209,16 @@ impl State<char, Token, TokeniseError> for AccessTokenState {
         match new_state {
             Some(new_state) => {
                 self.state = new_state;
-            },
+            }
             None => {}
         }
 
         match action {
-            SequenceAction::Done => Ok((Some(Token::Access(std::mem::take(&mut self.accesses))), Some(Box::new(NormalState{})), SequenceAction::Hold)),
+            SequenceAction::Done => Ok((
+                Some(Token::Access(std::mem::take(&mut self.accesses))),
+                Some(Box::new(NormalState {})),
+                SequenceAction::Hold,
+            )),
             SequenceAction::Advance => Ok((None, None, SequenceAction::Advance)),
             SequenceAction::Hold => Ok((None, None, SequenceAction::Hold)),
         }
@@ -191,36 +228,74 @@ impl State<char, Token, TokeniseError> for AccessTokenState {
 struct AccessState {}
 impl State<char, Access, TokeniseError> for AccessState {
     fn handle(
-            &mut self,
-            c: Option<char>,
-        ) -> Result<(Option<Access>, Option<Box<dyn State<char, Access, TokeniseError>>>, SequenceAction), TokeniseError> {
+        &mut self,
+        c: Option<char>,
+    ) -> Result<
+        (
+            Option<Access>,
+            Option<Box<dyn State<char, Access, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
         match c {
             Some(c) if c.is_whitespace() => Ok((None, None, SequenceAction::Advance)),
-            Some('.') => Ok((None, Some(Box::new(IdentifierState{..Default::default()})), SequenceAction::Advance)),
-            Some('(') => Ok((None, Some(Box::new(BracketState{call: true, ..Default::default()})), SequenceAction::Advance)),
-            Some('[') => Ok((None, Some(Box::new(BracketState{call: false, ..Default::default()})), SequenceAction::Advance)),
+            Some('.') => Ok((
+                None,
+                Some(Box::new(IdentifierState {
+                    ..Default::default()
+                })),
+                SequenceAction::Advance,
+            )),
+            Some('(') => Ok((
+                None,
+                Some(Box::new(BracketState {
+                    call: true,
+                    ..Default::default()
+                })),
+                SequenceAction::Advance,
+            )),
+            Some('[') => Ok((
+                None,
+                Some(Box::new(BracketState {
+                    call: false,
+                    ..Default::default()
+                })),
+                SequenceAction::Advance,
+            )),
 
-            _ => Ok((None, None, SequenceAction::Done))
+            _ => Ok((None, None, SequenceAction::Done)),
         }
     }
 }
 
 #[derive(Default)]
 struct IdentifierState {
-    identifier: String
+    identifier: String,
 }
 
 impl State<char, Access, TokeniseError> for IdentifierState {
     fn handle(
-            &mut self,
-            c: Option<char>,
-        ) -> Result<(Option<Access>, Option<Box<dyn State<char, Access, TokeniseError>>>, SequenceAction), TokeniseError> {
+        &mut self,
+        c: Option<char>,
+    ) -> Result<
+        (
+            Option<Access>,
+            Option<Box<dyn State<char, Access, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
         match c {
             Some(c) if c.is_alphanumeric() => {
                 self.identifier.push(c);
                 Ok((None, None, SequenceAction::Advance))
-            },
-            _ => Ok((Some(Access::Name(self.identifier.clone())), Some(Box::new(AccessState{})), SequenceAction::Hold)),
+            }
+            _ => Ok((
+                Some(Access::Name(self.identifier.clone())),
+                Some(Box::new(AccessState {})),
+                SequenceAction::Hold,
+            )),
         }
     }
 }
@@ -233,9 +308,16 @@ struct BracketState {
 }
 impl State<char, Access, TokeniseError> for BracketState {
     fn handle(
-            &mut self,
-            c: Option<char>,
-        ) -> Result<(Option<Access>, Option<Box<dyn State<char, Access, TokeniseError>>>, SequenceAction), TokeniseError> {
+        &mut self,
+        c: Option<char>,
+    ) -> Result<
+        (
+            Option<Access>,
+            Option<Box<dyn State<char, Access, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
         let open = if self.call { '(' } else { '[' };
         let close = if self.call { ')' } else { ']' };
         match c {
@@ -256,15 +338,20 @@ impl State<char, Access, TokeniseError> for BracketState {
                 } else {
                     Access::Index(tokenise(&self.inner))
                 };
-                Ok((Some(acc), Some(Box::new(AccessState{})), SequenceAction::Advance))
+                Ok((
+                    Some(acc),
+                    Some(Box::new(AccessState {})),
+                    SequenceAction::Advance,
+                ))
             }
             Some(c) => {
                 self.inner.push(c);
                 Ok((None, None, SequenceAction::Advance))
-            },
-            None => {
-                Err(TokeniseError::Expectation { found: "EOF".to_string(), expected: ")".to_string() })
             }
+            None => Err(TokeniseError::Expectation {
+                found: "EOF".to_string(),
+                expected: ")".to_string(),
+            }),
         }
     }
 }
@@ -276,12 +363,27 @@ struct DoubleState {
 }
 impl State<char, Token, TokeniseError> for DoubleState {
     fn handle(
-            &mut self,
-            c: Option<char>,
-        ) -> Result<(Option<Token>, Option<Box<dyn State<char, Token, TokeniseError>>>, SequenceAction), TokeniseError> {
+        &mut self,
+        c: Option<char>,
+    ) -> Result<
+        (
+            Option<Token>,
+            Option<Box<dyn State<char, Token, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
         match c {
-            Some(c) if c == self.target => Ok((Some(self.result_double.clone()), Some(Box::new(NormalState{})), SequenceAction::Advance)),
-            _ => Ok((Some(self.result_single.clone()), Some(Box::new(NormalState{})), SequenceAction::Hold))
+            Some(c) if c == self.target => Ok((
+                Some(self.result_double.clone()),
+                Some(Box::new(NormalState {})),
+                SequenceAction::Advance,
+            )),
+            _ => Ok((
+                Some(self.result_single.clone()),
+                Some(Box::new(NormalState {})),
+                SequenceAction::Hold,
+            )),
         }
     }
 }
@@ -311,38 +413,51 @@ pub fn tokenise(input: &str) -> Vec<Token> {
     tokens
 }
 
-#[test]
-fn number() {
-    assert_eq!(VecDeque::from([Token::Number(100.0)]), tokenise("100.0"));
-}
+#[cfg(test)]
+mod test {
+    use std::collections::VecDeque;
 
-#[test]
-fn function() {
-    assert_eq!(Vec::from([
-        Token::Access(vec![Access::Name("math".to_string()), Access::Name("sin".to_string()), Access::Call(vec![Token::Number(1.0)])])
-    ]), tokenise("math.sin(1)"));
-}
+    use crate::{data::Operator, tokeniser::{tokenise, Access, Token}};
 
-#[test]
-fn multiply() {
-    assert_eq!(
-        VecDeque::from([
-            Token::Number(100.0),
-            Token::Operator(Operator::Multiply),
-            Token::Number(99.0)
-        ]),
-        tokenise("100.0*99")
-    );
-}
 
-#[test]
-fn divide() {
-    assert_eq!(
-        VecDeque::from([
-            Token::Number(100.0),
-            Token::Operator(Operator::Divide),
-            Token::Number(99.0)
-        ]),
-        tokenise("100.0/99")
-    );
+    #[test]
+    fn number() {
+        assert_eq!(VecDeque::from([Token::Number(100.0)]), tokenise("100.0"));
+    }
+
+    #[test]
+    fn function() {
+        assert_eq!(
+            Vec::from([Token::Access(vec![
+                Access::Name("math".to_string()),
+                Access::Name("sin".to_string()),
+                Access::Call(vec![Token::Number(1.0)])
+            ])]),
+            tokenise("math.sin(1)")
+        );
+    }
+
+    #[test]
+    fn multiply() {
+        assert_eq!(
+            VecDeque::from([
+                Token::Number(100.0),
+                Token::Operator(Operator::Multiply),
+                Token::Number(99.0)
+            ]),
+            tokenise("100.0*99")
+        );
+    }
+
+    #[test]
+    fn divide() {
+        assert_eq!(
+            VecDeque::from([
+                Token::Number(100.0),
+                Token::Operator(Operator::Divide),
+                Token::Number(99.0)
+            ]),
+            tokenise("100.0/99")
+        );
+    }
 }
