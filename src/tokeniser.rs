@@ -94,7 +94,17 @@ impl State<char, Token, TokeniseError> for NormalState {
             Some('(') => Ok((Some(Token::OpenBracket), None, SequenceAction::Advance)),
             Some(')') => Ok((Some(Token::CloseBracket), None, SequenceAction::Advance)),
 
-            Some('?') => Ok((None, Some(Box::new(QuestionMarkState{..Default::default()})), SequenceAction::Advance)),
+            Some('?') => Ok((None, Some(Box::new(DoubleState{
+                target: '?',
+                result_single: Token::Operator(Operator::Conditional),
+                result_double: Token::Operator(Operator::NullishCoalescing),
+            })), SequenceAction::Advance)),
+
+            Some('=') => Ok((None, Some(Box::new(DoubleState{
+                target: '=',
+                result_single: Token::Operator(Operator::Assignment),
+                result_double: Token::Operator(Operator::Equality),
+            })), SequenceAction::Advance)),
 
             Some(c) => Err(TokeniseError::Expectation {
                 found: c.to_string(),
@@ -259,16 +269,19 @@ impl State<char, Access, TokeniseError> for BracketState {
     }
 }
 
-#[derive(Default)]
-struct QuestionMarkState {}
-impl State<char, Token, TokeniseError> for QuestionMarkState {
+struct DoubleState {
+    target: char,
+    result_single: Token,
+    result_double: Token,
+}
+impl State<char, Token, TokeniseError> for DoubleState {
     fn handle(
             &mut self,
             c: Option<char>,
         ) -> Result<(Option<Token>, Option<Box<dyn State<char, Token, TokeniseError>>>, SequenceAction), TokeniseError> {
         match c {
-            Some('?') => Ok((Some(Token::Operator(Operator::NullishCoalescing)), Some(Box::new(NormalState{})), SequenceAction::Advance)),
-            _ => Ok((Some(Token::Operator(Operator::Conditional)), Some(Box::new(NormalState{})), SequenceAction::Hold))
+            Some(c) if c == self.target => Ok((Some(self.result_double.clone()), Some(Box::new(NormalState{})), SequenceAction::Advance)),
+            _ => Ok((Some(self.result_single.clone()), Some(Box::new(NormalState{})), SequenceAction::Hold))
         }
     }
 }

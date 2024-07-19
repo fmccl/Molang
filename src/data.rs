@@ -7,7 +7,9 @@ pub enum Operator {
     Multiply,
     Add,
     Subtract,
-    Not
+    Not,
+    Assignment,
+    Equality,
 }
 
 impl Operator {
@@ -16,8 +18,9 @@ impl Operator {
             Self::Add | Self::Subtract => 11,
             Self::Multiply | Self::Divide => 12,
             Self::NullishCoalescing => 3,
-            Self::Conditional | Self::Colon => 2,
+            Self::Conditional | Self::Colon | Self::Assignment => 2,
             Self::Not => 14,
+            Self::Equality => 8,
         }
     }
 }
