@@ -1,5 +1,5 @@
 # Molang
-From the [Minecraft docs](https://learn.microsoft.com/en-us/minecraft/creator/reference/content/molangreference/examples/molangconcepts/molangintroduction?view=minecraft-bedrock-stable), Molang is a simple expression-based language designed for fast, data-driven calculation of values at run-time, and with a direct connection to in-game values and systems.
+From the [Minecraft docs](https://learn.microsoft.com/en-us/minecraft/creator/reference/content/molangreference/examples/molangconcepts/molangintroduction?view=minecraft-bedrock-stable), Molang is a simple expression-based language designed for fast, data-driven calculation of values at run-time, with a direct connection to in-game values and systems.
 
 That said, it's just a normal expression language, which could be suitable for spreadsheets, animation software and games other than Minecraft.
 # Basic Usage
