@@ -7,12 +7,12 @@ pub enum Value {
     Number(f32),
     Struct(HashMap<String, Value>),
     Function(Function),
-    Null
+    Null,
 }
 
 #[derive(Clone)]
 pub struct Function {
-    pub f: Rc<RefCell<dyn FnMut(Vec<Value>) -> Result<Value, MolangError>>>
+    pub f: Rc<RefCell<dyn FnMut(Vec<Value>) -> Result<Value, MolangError>>>,
 }
 
 impl PartialEq for Function {
@@ -32,7 +32,9 @@ pub trait ToMolangValue {
 }
 
 pub trait FromMolangValue {
-    fn from_value(v: Value) -> Result<Self, MolangError> where Self: Sized;
+    fn from_value(v: Value) -> Result<Self, MolangError>
+    where
+        Self: Sized;
 }
 
 impl ToMolangValue for Value {
@@ -41,20 +43,26 @@ impl ToMolangValue for Value {
     }
 }
 
-impl <T>ToMolangValue for Option<T> where T: ToMolangValue {
+impl<T> ToMolangValue for Option<T>
+where
+    T: ToMolangValue,
+{
     fn to_value(self) -> Value {
         match self {
             Some(s) => s.to_value(),
-            None => Value::Null
+            None => Value::Null,
         }
     }
 }
 
-impl <T>FromMolangValue for Option<T> where T: FromMolangValue {
+impl<T> FromMolangValue for Option<T>
+where
+    T: FromMolangValue,
+{
     fn from_value(v: Value) -> Result<Self, MolangError> {
         Ok(match v {
             Value::Null => None,
-            a => Some(T::from_value(a)?)
+            a => Some(T::from_value(a)?),
         })
     }
 }
@@ -66,10 +74,13 @@ impl ToMolangValue for f32 {
 }
 
 impl FromMolangValue for f32 {
-    fn from_value(v: Value) -> Result<Self, MolangError>  {
+    fn from_value(v: Value) -> Result<Self, MolangError> {
         match v {
             Value::Number(n) => Ok(n),
-            a => Err(MolangError::TypeError("Number".to_string(), format!("{a:?}")))
+            a => Err(MolangError::TypeError(
+                "Number".to_string(),
+                format!("{a:?}"),
+            )),
         }
     }
 }

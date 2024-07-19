@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse, parse2, parse_macro_input, Data, DeriveInput, Ident, Type};
+use syn::{parse2, Data, DeriveInput, Ident, Type};
 
 #[proc_macro_derive(MolangStruct)]
 pub fn molang_struct_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
