@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-};
+use std::{collections::HashMap, fmt::Debug};
 
 use thiserror::Error;
 
@@ -38,6 +35,7 @@ pub fn run(
     expr: &Expr,
     constants: &HashMap<String, Value>,
     variables: &mut HashMap<String, Value>,
+    aliases: &HashMap<String, String>,
 ) -> Result<Value, MolangError> {
     match expr {
         Expr::Literal(expr) => Ok(expr.clone()),
@@ -48,7 +46,7 @@ pub fn run(
                 | Instruction::Subtract(left, right)
                 | Instruction::Multiply(left, right)
                 | Instruction::Divide(left, right) => {
-                    let left = match run(left, constants, variables)? {
+                    let left = match run(left, constants, variables, aliases)? {
                         Value::Number(n) => n,
                         a => {
                             return Err(MolangError::TypeError(
@@ -57,7 +55,7 @@ pub fn run(
                             ))
                         }
                     };
-                    let right = match run(right, constants, variables)? {
+                    let right = match run(right, constants, variables, aliases)? {
                         Value::Number(n) => n,
                         a => {
                             return Err(MolangError::TypeError(
@@ -80,7 +78,12 @@ pub fn run(
                     for access in accesses {
                         match access {
                             AccessExpr::Name(name) => {
+                                let mut name = name;
                                 if let Value::Null = current {
+                                    if let Some(alias) = aliases.get(name) {
+                                        name = alias;
+                                    }
+
                                     current = constants
                                         .get(name)
                                         .or(variables.get(name))
@@ -103,7 +106,7 @@ pub fn run(
                                 if let Value::Function(function) = current {
                                     let mut v_args = Vec::new();
                                     for arg in args {
-                                        v_args.push(run(arg, constants, variables)?)
+                                        v_args.push(run(arg, constants, variables, aliases)?)
                                     }
                                     current = function.f.borrow_mut()(v_args)?;
                                 } else {
@@ -158,9 +161,14 @@ pub fn run(
                                 } else if let Value::Struct(struc) =
                                     unsafe { current.as_mut().unwrap() }
                                 {
-                                    current = struc
-                                        .get_mut(name)
-                                        .ok_or(MolangError::VariableNotFound(name.clone()))?;
+                                    let l_current = struc.get_mut(name);
+                                    if let Some(l_current) = l_current {
+                                        current = l_current;
+                                    } else {
+                                        struc.insert(name.clone(), Value::Struct(HashMap::new()));
+                                        current = struc.get_mut(name).unwrap();
+                                    }
+                                    // create field if it doesnt exist
                                 } else {
                                     return Err(MolangError::BadAccess(
                                         ".".to_string(),
@@ -175,15 +183,17 @@ pub fn run(
                         }
                     }
 
-                    unsafe { *current = run(right, constants, variables)? };
+                    unsafe { *current = run(right, constants, variables, aliases)? };
 
                     Ok(unsafe { (*current).clone() })
                 }
                 Instruction::Eqaulity(left, right) => Ok(Value::Number(
-                    (run(left, constants, variables)? == run(right, constants, variables)?).into(),
+                    (run(left, constants, variables, aliases)?
+                        == run(right, constants, variables, aliases)?)
+                    .into(),
                 )),
                 Instruction::Conditional(left, right) => {
-                    let left = match run(left, constants, variables)? {
+                    let left = match run(left, constants, variables, aliases)? {
                         Value::Number(n) => n,
                         a => {
                             return Err(MolangError::TypeError(
@@ -210,14 +220,14 @@ pub fn run(
                     };
 
                     if left == 0.0 {
-                        run(if_false, constants, variables)
+                        run(if_false, constants, variables, aliases)
                     } else {
-                        run(if_true, constants, variables)
+                        run(if_true, constants, variables, aliases)
                     }
                 }
                 Instruction::NullishCoalescing(left, right) => {
-                    match run(left, constants, variables)? {
-                        Value::Null => run(right, constants, variables),
+                    match run(left, constants, variables, aliases)? {
+                        Value::Null => run(right, constants, variables, aliases),
                         a => Ok(a),
                     }
                 }
@@ -225,7 +235,7 @@ pub fn run(
                     Err(MolangError::SyntaxError("Unexpected colon".to_string()))
                 }
                 Instruction::Not(expr) => {
-                    let n = match run(expr, constants, variables)? {
+                    let n = match run(expr, constants, variables, aliases)? {
                         Value::Number(n) => n,
                         a => {
                             return Err(MolangError::TypeError(
@@ -250,7 +260,6 @@ mod test {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use crate::{compile, run, value::Function, MolangError, Value};
-
 
     #[test]
     fn function() {
@@ -290,7 +299,8 @@ mod test {
             run(
                 &compile("math.max(1, 5, 2) * 100").unwrap(),
                 &constants,
-                &mut HashMap::new()
+                &mut HashMap::new(),
+                &mut HashMap::new(),
             )
             .unwrap()
         );
@@ -307,7 +317,8 @@ mod test {
             run(
                 &compile("pi * 100").unwrap(),
                 &constants,
-                &mut HashMap::new()
+                &mut HashMap::new(),
+                &mut HashMap::new(),
             )
             .unwrap()
         );
@@ -320,7 +331,8 @@ mod test {
             run(
                 &compile("!1 ? 100 : 200").unwrap(),
                 &HashMap::new(),
-                &mut HashMap::new()
+                &mut HashMap::new(),
+                &mut HashMap::new(),
             )
             .unwrap()
         );
@@ -329,14 +341,26 @@ mod test {
     #[test]
     fn assignment() {
         let variables = &mut HashMap::new();
-        variables.insert("lolz".to_string(), Value::Number(2.0));
+        variables.insert("lolz".to_string(), Value::Struct(HashMap::new()));
         assert_eq!(
             Value::Number(200.0),
-            run(&compile("lolz = 200").unwrap(), &HashMap::new(), variables).unwrap()
+            run(
+                &compile("lolz.nested.property = 200").unwrap(),
+                &HashMap::new(),
+                variables,
+                &HashMap::new()
+            )
+            .unwrap()
         );
         assert_eq!(
             Value::Number(200.0),
-            run(&compile("lolz").unwrap(), &HashMap::new(), variables).unwrap()
+            run(
+                &compile("lolz.nested.property").unwrap(),
+                &HashMap::new(),
+                variables,
+                &HashMap::new()
+            )
+            .unwrap()
         );
     }
 }
