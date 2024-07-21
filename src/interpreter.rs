@@ -141,8 +141,12 @@ pub fn run(
                     for access in accesses {
                         match access {
                             AccessExpr::Name(name) => {
+                                let mut name = name;
                                 if let Value::Null = unsafe { current.as_ref().unwrap() } {
                                     loop {
+                                        if let Some(long_name) = aliases.get(name) {
+                                            name = long_name;
+                                        }
                                         if let Some(some_current) = variables.get_mut(name) {
                                             current = some_current;
                                             break;
@@ -168,7 +172,6 @@ pub fn run(
                                         struc.insert(name.clone(), Value::Struct(HashMap::new()));
                                         current = struc.get_mut(name).unwrap();
                                     }
-                                    // create field if it doesnt exist
                                 } else {
                                     return Err(MolangError::BadAccess(
                                         ".".to_string(),

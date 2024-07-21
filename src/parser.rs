@@ -1,6 +1,7 @@
-
 use crate::{
-    data::Operator, Value, tokeniser::{Access, Token}, CompileError
+    data::Operator,
+    tokeniser::{Access, Token},
+    CompileError, Value,
 };
 
 #[derive(Debug, PartialEq)]
@@ -28,11 +29,10 @@ pub enum Instruction {
 pub enum AccessExpr {
     Name(String),
     Index(Expr),
-    Call(Vec<Expr>)
+    Call(Vec<Expr>),
 }
 
 pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
-
     if let [Token::OpenBracket, inner_tokens @ .., Token::CloseBracket] = tokens {
         tokens = inner_tokens
     }
@@ -65,19 +65,21 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
         return Ok(Expr::Derived(Box::new(match op {
             Operator::Not => {
                 if !left.is_empty() {
-                    return Err(CompileError::TokensBeforePrefixOperator)
+                    return Err(CompileError::TokensBeforePrefixOperator);
                 }
                 Instruction::Not(treeify(right)?)
-            },
+            }
             Operator::Equality => Instruction::Eqaulity(treeify(left)?, treeify(right)?),
             Operator::Assignment => Instruction::Assignment(treeify(left)?, treeify(right)?),
             Operator::Add => Instruction::Add(treeify(left)?, treeify(right)?),
             Operator::Subtract => Instruction::Subtract(treeify(left)?, treeify(right)?),
             Operator::Multiply => Instruction::Multiply(treeify(left)?, treeify(right)?),
-            Operator::Divide => Instruction::Multiply(treeify(left)?, treeify(right)?),
+            Operator::Divide => Instruction::Divide(treeify(left)?, treeify(right)?),
             Operator::Conditional => Instruction::Conditional(treeify(left)?, treeify(right)?),
             Operator::Colon => Instruction::Colon(treeify(left)?, treeify(right)?),
-            Operator::NullishCoalescing => Instruction::NullishCoalescing(treeify(left)?, treeify(right)?),
+            Operator::NullishCoalescing => {
+                Instruction::NullishCoalescing(treeify(left)?, treeify(right)?)
+            }
         })));
     } else {
         match tokens {
@@ -95,14 +97,14 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
                             access_exprs.push(AccessExpr::Call(args));
                         }
                         Access::Name(name) => access_exprs.push(AccessExpr::Name(name.clone())),
-                        Access::Index(tokens) => access_exprs.push(AccessExpr::Index(treeify(tokens)?))
+                        Access::Index(tokens) => {
+                            access_exprs.push(AccessExpr::Index(treeify(tokens)?))
+                        }
                     }
                 }
                 Ok(Expr::Derived(Box::new(Instruction::Access(access_exprs))))
-            },
-            a => {
-                panic!("Unparsable tokens: {a:?}")
             }
+            _ => Err(CompileError::IncompleteExpression),
         }
     }
 }

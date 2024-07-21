@@ -24,7 +24,7 @@ pub enum Access {
     Call(Vec<Token>),
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum TokeniseError {
     Expectation { found: String, expected: String },
 }
@@ -334,9 +334,9 @@ impl State<char, Access, TokeniseError> for BracketState {
             Some(c) if c == close && self.open_brackets == 0 => {
                 self.open_brackets += 1;
                 let acc = if self.call {
-                    Access::Call(tokenise(&self.inner))
+                    Access::Call(tokenise(&self.inner)?)
                 } else {
-                    Access::Index(tokenise(&self.inner))
+                    Access::Index(tokenise(&self.inner)?)
                 };
                 Ok((
                     Some(acc),
@@ -388,7 +388,7 @@ impl State<char, Token, TokeniseError> for DoubleState {
     }
 }
 
-pub fn tokenise(input: &str) -> Vec<Token> {
+pub fn tokenise(input: &str) -> Result<Vec<Token>, TokeniseError> {
     let mut state: Box<dyn State<char, Token, TokeniseError>> = Box::new(NormalState {});
 
     let mut i = 0;
@@ -396,7 +396,7 @@ pub fn tokenise(input: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
 
     loop {
-        let (token, new_state, action) = state.handle(input.chars().nth(i)).unwrap();
+        let (token, new_state, action) = state.handle(input.chars().nth(i))?;
         if let Some(new_state) = new_state {
             state = new_state;
         }
@@ -410,19 +410,24 @@ pub fn tokenise(input: &str) -> Vec<Token> {
         }
     }
 
-    tokens
+    Ok(tokens)
 }
 
 #[cfg(test)]
 mod test {
     use std::collections::VecDeque;
 
-    use crate::{data::Operator, tokeniser::{tokenise, Access, Token}};
-
+    use crate::{
+        data::Operator,
+        tokeniser::{tokenise, Access, Token},
+    };
 
     #[test]
     fn number() {
-        assert_eq!(VecDeque::from([Token::Number(100.0)]), tokenise("100.0"));
+        assert_eq!(
+            VecDeque::from([Token::Number(100.0)]),
+            tokenise("100.0").unwrap()
+        );
     }
 
     #[test]
@@ -433,7 +438,7 @@ mod test {
                 Access::Name("sin".to_string()),
                 Access::Call(vec![Token::Number(1.0)])
             ])]),
-            tokenise("math.sin(1)")
+            tokenise("math.sin(1)").unwrap()
         );
     }
 
@@ -445,7 +450,7 @@ mod test {
                 Token::Operator(Operator::Multiply),
                 Token::Number(99.0)
             ]),
-            tokenise("100.0*99")
+            tokenise("100.0*99").unwrap()
         );
     }
 
@@ -457,7 +462,7 @@ mod test {
                 Token::Operator(Operator::Divide),
                 Token::Number(99.0)
             ]),
-            tokenise("100.0/99")
+            tokenise("100.0/99").unwrap()
         );
     }
 }
