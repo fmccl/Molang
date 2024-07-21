@@ -12,12 +12,14 @@ fn main() {
     let mut aliases = HashMap::new();
     aliases.insert("v".to_string(), "variable".to_string());
 
-    loop {
-        print!("\x1b[0;36m");
+    println!("fmccl/molang REPL: ");
 
-        std::io::stdout().flush().unwrap();
+    loop {
+        print!("\x1b[0;36m > ");
 
         print!("\x1b[0;0m");
+
+        std::io::stdout().flush().unwrap();
 
         let mut line = "".into();
         let len = std::io::stdin().lock().read_line(&mut line).unwrap();

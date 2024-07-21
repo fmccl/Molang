@@ -87,13 +87,10 @@ pub fn run(
                                     current = constants
                                         .get(name)
                                         .or(variables.get(name))
-                                        .ok_or(MolangError::VariableNotFound(name.clone()))?
+                                        .unwrap_or(&Value::Null)
                                         .clone();
                                 } else if let Value::Struct(struc) = current {
-                                    current = struc
-                                        .get(name)
-                                        .ok_or(MolangError::VariableNotFound(name.clone()))?
-                                        .clone();
+                                    current = struc.get(name).unwrap_or(&Value::Null).clone();
                                 } else {
                                     return Err(MolangError::BadAccess(
                                         ".".to_string(),
