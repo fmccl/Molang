@@ -1,3 +1,4 @@
+mod blockiser;
 mod data;
 mod interpreter;
 mod parser;
@@ -5,7 +6,8 @@ mod state;
 mod tokeniser;
 mod value;
 
-pub use interpreter::run;
+use blockiser::blockise;
+use blockiser::Block;
 pub use interpreter::MolangError;
 pub use molang_proc_macro::MolangStruct;
 pub use parser::Expr;
@@ -15,12 +17,14 @@ pub use value::FromMolangValue;
 pub use value::ToMolangValue;
 pub use value::Value;
 
-pub fn compile(expr: &str) -> Result<Expr, CompileError> {
+pub fn compile(expr: &str) -> Result<Block, CompileError> {
     match tokeniser::tokenise(expr) {
         Err(te) => Err(CompileError::TokeniseError(te)),
-        Ok(tokens) => parser::treeify(tokens.as_slice()),
+        Ok(tokens) => blockise(tokens),
     }
 }
+
+pub use interpreter::run_block as run;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum CompileError {

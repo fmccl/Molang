@@ -23,6 +23,7 @@ pub enum Instruction {
     Not(Expr),
     Eqaulity(Expr, Expr),
     Assignment(Expr, Expr),
+    Return(Expr),
 }
 
 #[derive(Debug, PartialEq)]
@@ -68,6 +69,12 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
                     return Err(CompileError::TokensBeforePrefixOperator);
                 }
                 Instruction::Not(treeify(right)?)
+            }
+            Operator::Return => {
+                if !left.is_empty() {
+                    return Err(CompileError::TokensBeforePrefixOperator);
+                }
+                Instruction::Return(treeify(right)?)
             }
             Operator::Equality => Instruction::Eqaulity(treeify(left)?, treeify(right)?),
             Operator::Assignment => Instruction::Assignment(treeify(left)?, treeify(right)?),

@@ -1,13 +1,13 @@
 use std::{default::Default, fmt::Display};
-
 use thiserror::Error;
 
 use crate::{
+    blockiser::{blockise, Block},
     data::Operator,
     state::{SequenceAction, State},
 };
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub enum Token {
     Number(f32),
     Operator(Operator),
@@ -15,9 +15,11 @@ pub enum Token {
     CloseBracket,
     Access(Vec<Access>),
     Comma,
+    Semicolon,
+    Block(Block),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub enum Access {
     Name(String),
     Index(Vec<Token>),
@@ -102,6 +104,7 @@ impl State<char, Token, TokeniseError> for NormalState {
                 None,
                 SequenceAction::Advance,
             )),
+            Some(';') => Ok((Some(Token::Semicolon), None, SequenceAction::Advance)),
 
             Some('(') => Ok((Some(Token::OpenBracket), None, SequenceAction::Advance)),
             Some(')') => Ok((Some(Token::CloseBracket), None, SequenceAction::Advance)),
@@ -110,8 +113,8 @@ impl State<char, Token, TokeniseError> for NormalState {
                 None,
                 Some(Box::new(DoubleState {
                     target: '?',
-                    result_single: Token::Operator(Operator::Conditional),
-                    result_double: Token::Operator(Operator::NullishCoalescing),
+                    result_single: Some(Token::Operator(Operator::Conditional)),
+                    result_double: Some(Token::Operator(Operator::NullishCoalescing)),
                 })),
                 SequenceAction::Advance,
             )),
@@ -120,8 +123,16 @@ impl State<char, Token, TokeniseError> for NormalState {
                 None,
                 Some(Box::new(DoubleState {
                     target: '=',
-                    result_single: Token::Operator(Operator::Assignment),
-                    result_double: Token::Operator(Operator::Equality),
+                    result_single: Some(Token::Operator(Operator::Assignment)),
+                    result_double: Some(Token::Operator(Operator::Equality)),
+                })),
+                SequenceAction::Advance,
+            )),
+
+            Some('{') => Ok((
+                None,
+                Some(Box::new(BlockState {
+                    ..Default::default()
                 })),
                 SequenceAction::Advance,
             )),
@@ -183,6 +194,51 @@ impl State<char, Token, TokeniseError> for NumberState {
     }
 }
 
+#[derive(Default)]
+struct BlockState {
+    chars: String,
+    open: u32,
+}
+impl State<char, Token, TokeniseError> for BlockState {
+    fn handle(
+        &mut self,
+        c: Option<char>,
+    ) -> Result<
+        (
+            Option<Token>,
+            Option<Box<dyn State<char, Token, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
+        match c {
+            Some('}') if self.open == 0 => Ok((
+                Some(Token::Block(blockise(tokenise(&self.chars)?).unwrap())),
+                Some(Box::new(NormalState {})),
+                SequenceAction::Advance,
+            )),
+            Some('}') => {
+                self.chars.push('}');
+                self.open -= 1;
+                Ok((None, None, SequenceAction::Advance))
+            }
+            Some('{') => {
+                self.chars.push('{');
+                self.open += 1;
+                Ok((None, None, SequenceAction::Advance))
+            }
+            Some(c) => {
+                self.chars.push(c);
+                Ok((None, None, SequenceAction::Advance))
+            }
+            None => Err(TokeniseError::Expectation {
+                found: "EOF".to_string(),
+                expected: "}".to_string(),
+            }),
+        }
+    }
+}
+
 struct AccessTokenState {
     state: Box<dyn State<char, Access, TokeniseError>>,
     accesses: Vec<Access>,
@@ -214,11 +270,21 @@ impl State<char, Token, TokeniseError> for AccessTokenState {
         }
 
         match action {
-            SequenceAction::Done => Ok((
-                Some(Token::Access(std::mem::take(&mut self.accesses))),
-                Some(Box::new(NormalState {})),
-                SequenceAction::Hold,
-            )),
+            SequenceAction::Done => {
+                if self.accesses[0] == Access::Name("return".to_string()) {
+                    // perf: create this string once
+                    return Ok((
+                        Some(Token::Operator(Operator::Return)),
+                        Some(Box::new(NormalState {})),
+                        SequenceAction::Hold,
+                    ));
+                }
+                Ok((
+                    Some(Token::Access(std::mem::take(&mut self.accesses))),
+                    Some(Box::new(NormalState {})),
+                    SequenceAction::Hold,
+                ))
+            }
             SequenceAction::Advance => Ok((None, None, SequenceAction::Advance)),
             SequenceAction::Hold => Ok((None, None, SequenceAction::Hold)),
         }
@@ -273,7 +339,6 @@ impl State<char, Access, TokeniseError> for AccessState {
 struct IdentifierState {
     identifier: String,
 }
-
 impl State<char, Access, TokeniseError> for IdentifierState {
     fn handle(
         &mut self,
@@ -358,8 +423,8 @@ impl State<char, Access, TokeniseError> for BracketState {
 
 struct DoubleState {
     target: char,
-    result_single: Token,
-    result_double: Token,
+    result_single: Option<Token>,
+    result_double: Option<Token>,
 }
 impl State<char, Token, TokeniseError> for DoubleState {
     fn handle(
@@ -375,12 +440,12 @@ impl State<char, Token, TokeniseError> for DoubleState {
     > {
         match c {
             Some(c) if c == self.target => Ok((
-                Some(self.result_double.clone()),
+                Some(self.result_double.take().unwrap()),
                 Some(Box::new(NormalState {})),
                 SequenceAction::Advance,
             )),
             _ => Ok((
-                Some(self.result_single.clone()),
+                Some(self.result_single.take().unwrap()),
                 Some(Box::new(NormalState {})),
                 SequenceAction::Hold,
             )),
