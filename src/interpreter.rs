@@ -147,14 +147,16 @@ pub fn run(
                                         if let Some(some_current) = variables.get_mut(name) {
                                             current = some_current;
                                             break;
-                                        } else if constants.contains_key(name) {
-                                            return Err(MolangError::NotAssignable(format!(
-                                                "Constant {name}"
-                                            )));
                                         } else {
-                                            return Err(MolangError::VariableNotFound(
-                                                name.to_string(),
-                                            ));
+                                            if constants.contains_key(name) {
+                                                return Err(MolangError::NotAssignable(format!(
+                                                    "Constant {name}"
+                                                )));
+                                            } else {
+                                                return Err(MolangError::VariableNotFound(
+                                                    format!("{name}"),
+                                                ));
+                                            }
                                         }
                                     }
                                 } else if let Value::Struct(struc) =

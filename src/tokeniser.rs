@@ -201,12 +201,16 @@ impl State<char, Token, TokeniseError> for AccessTokenState {
     > {
         let (access, new_state, action) = self.state.handle(c)?;
 
-        if let Some(access) = access {
-            self.accesses.push(access)
+        match access {
+            Some(access) => self.accesses.push(access),
+            None => {}
         }
 
-        if let Some(new_state) = new_state {
-            self.state = new_state;
+        match new_state {
+            Some(new_state) => {
+                self.state = new_state;
+            }
+            None => {}
         }
 
         match action {

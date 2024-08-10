@@ -22,7 +22,10 @@ fn molang_struct(input: TokenStream) -> TokenStream {
         .map(|field| field.ident.clone().unwrap())
         .collect();
 
-    let field_types: Vec<Type> = fields.iter().map(|field| field.ty.clone()).collect();
+    let field_types: Vec<Type> = fields
+        .iter()
+        .map(|field| field.ty.clone())
+        .collect();
 
     quote! {
         impl molang::ToMolangValue for #name {
