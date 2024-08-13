@@ -5,7 +5,7 @@ use thiserror::Error;
 use crate::{
     blockiser::Block,
     parser::{AccessExpr, Instruction},
-    Expr, Value,
+    Expr, External, Value,
 };
 
 macro_rules! run_bubble_returns {
@@ -107,7 +107,35 @@ pub fn run_expr(
                 Instruction::Access(accesses) => {
                     let mut current = Value::Null;
 
+                    let mut last_external: Option<(
+                        std::rc::Rc<std::cell::RefCell<dyn External>>,
+                        &String,
+                    )> = None;
+
                     for access in accesses {
+                        match access {
+                            AccessExpr::Call(args) => {
+                                if let Some(ref last_external) = last_external {
+                                    let mut v_args = Vec::new();
+
+                                    for arg in args {
+                                        v_args.push(run_bubble_returns!(
+                                            arg, constants, variables, aliases
+                                        ));
+                                    }
+
+                                    current = last_external
+                                        .0
+                                        .borrow_mut()
+                                        .call_function(last_external.1, v_args)?;
+                                    continue;
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        last_external = None;
+
                         match access {
                             AccessExpr::Name(name) => {
                                 let mut name = name;
@@ -123,6 +151,9 @@ pub fn run_expr(
                                         .clone();
                                 } else if let Value::Struct(struc) = current {
                                     current = struc.get(name).unwrap_or(&Value::Null).clone();
+                                } else if let Value::External(e) = current {
+                                    current = e.borrow_mut().get(name);
+                                    last_external = Some((e.clone(), name));
                                 } else {
                                     return Err(MolangError::BadAccess(
                                         ".".to_string(),
@@ -130,7 +161,18 @@ pub fn run_expr(
                                     ));
                                 }
                             }
-                            AccessExpr::Index(_) => todo!(),
+                            AccessExpr::Index(idx) => {
+                                if let Value::External(e) = current {
+                                    current = e.borrow_mut().index_get(run_bubble_returns!(
+                                        idx, constants, variables, aliases
+                                    ))?;
+                                } else {
+                                    return Err(MolangError::BadAccess(
+                                        "[]".to_string(),
+                                        format!("{current:?}"),
+                                    ));
+                                }
+                            }
                             AccessExpr::Call(args) => {
                                 if let Value::Function(function) = current {
                                     let mut v_args = Vec::new();
@@ -139,7 +181,7 @@ pub fn run_expr(
                                             arg, constants, variables, aliases
                                         ))
                                     }
-                                    current = function.f.borrow_mut()(v_args)?;
+                                    current = (function.f.borrow_mut())(v_args)?
                                 } else {
                                     return Err(MolangError::BadAccess(
                                         "()".to_string(),
@@ -203,6 +245,10 @@ pub fn run_expr(
                                         struc.insert(name.clone(), Value::Struct(HashMap::new()));
                                         current = struc.get_mut(name).unwrap();
                                     }
+                                } else if let Value::External(e) =
+                                    unsafe { current.as_mut().unwrap() }
+                                {
+                                    current = &mut e.borrow_mut().get(name);
                                 } else {
                                     return Err(MolangError::BadAccess(
                                         ".".to_string(),
@@ -210,7 +256,19 @@ pub fn run_expr(
                                     ));
                                 }
                             }
-                            AccessExpr::Index(_) => todo!(),
+                            AccessExpr::Index(idx) => match unsafe { current.as_ref().unwrap() } {
+                                Value::External(e) => {
+                                    current = &mut e.borrow_mut().index_get(
+                                        run_bubble_returns!(idx, constants, variables, aliases),
+                                    )?;
+                                }
+                                _ => {
+                                    return Err(MolangError::BadAccess(
+                                        "[]".to_string(),
+                                        format!("{current:?}"),
+                                    ))
+                                }
+                            },
                             AccessExpr::Call(_) => {
                                 return Err(MolangError::NotAssignable(format!("{access:?}")));
                             }

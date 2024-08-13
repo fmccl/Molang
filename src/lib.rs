@@ -13,7 +13,10 @@ pub use molang_proc_macro::MolangStruct;
 pub use parser::Expr;
 use thiserror::Error;
 use tokeniser::TokeniseError;
+pub use value::External;
 pub use value::FromMolangValue;
+pub use value::Function;
+pub use value::MolangEq;
 pub use value::ToMolangValue;
 pub use value::Value;
 

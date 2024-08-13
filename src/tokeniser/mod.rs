@@ -352,7 +352,7 @@ impl State<char, Access, TokeniseError> for IdentifierState {
         TokeniseError,
     > {
         match c {
-            Some(c) if c.is_alphanumeric() => {
+            Some(c) if c.is_alphanumeric() || c == '_' => {
                 self.identifier.push(c);
                 Ok((None, None, SequenceAction::Advance))
             }

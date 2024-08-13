@@ -1,8 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
 use crate::interpreter::MolangError;
 
-trait MolangEq {
+pub trait MolangEq {
     fn molang_eq(&self, rhs: &Value) -> bool;
 }
 
@@ -10,7 +10,7 @@ trait MolangEq {
 pub enum Value {
     Number(f32),
     Struct(HashMap<String, Value>),
-    External(Arc<dyn External>),
+    External(Rc<RefCell<dyn External>>),
     Function(Function),
     Null,
 }
@@ -39,9 +39,10 @@ impl MolangEq for Value {
                     false
                 }
             }
+
             Value::External(e) => {
                 if let Value::External(rhs) = rhs {
-                    e.molang_eq(&Value::External(rhs.clone()))
+                    e.borrow().molang_eq(&Value::External(rhs.clone()))
                 } else {
                     false
                 }
@@ -64,22 +65,29 @@ impl MolangEq for Value {
     }
 }
 
-trait External: Debug + MolangEq {}
+pub trait External: Debug + MolangEq {
+    fn get(&mut self, property: &str) -> Value;
+    fn set(&mut self, property: &str, value: Value) -> Result<(), MolangError>;
+    fn call_function(&mut self, function: &str, args: Vec<Value>) -> Result<Value, MolangError>;
+
+    fn index_get(&mut self, index: Value) -> Result<Value, MolangError>;
+    fn index_set(&mut self, index: Value, value: Value) -> Result<(), MolangError>;
+}
 
 #[derive(Clone)]
 pub struct Function {
     pub f: Rc<RefCell<dyn FnMut(Vec<Value>) -> Result<Value, MolangError>>>,
 }
 
-impl PartialEq for Function {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self, other)
+impl Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Function...")
     }
 }
 
-impl Debug for Function {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Function {...}")
+impl PartialEq for Function {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
     }
 }
 
