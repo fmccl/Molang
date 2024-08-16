@@ -21,7 +21,7 @@ pub enum Instruction {
     Colon(Expr, Expr),
     NullishCoalescing(Expr, Expr),
     Not(Expr),
-    Eqaulity(Expr, Expr),
+    Equality(Expr, Expr),
     Assignment(Expr, Expr),
 }
 
@@ -69,7 +69,7 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
                 }
                 Instruction::Not(treeify(right)?)
             }
-            Operator::Equality => Instruction::Eqaulity(treeify(left)?, treeify(right)?),
+            Operator::Equality => Instruction::Equality(treeify(left)?, treeify(right)?),
             Operator::Assignment => Instruction::Assignment(treeify(left)?, treeify(right)?),
             Operator::Add => Instruction::Add(treeify(left)?, treeify(right)?),
             Operator::Subtract => Instruction::Subtract(treeify(left)?, treeify(right)?),

@@ -185,7 +185,7 @@ pub fn run(
 
                     Ok(unsafe { (*current).clone() })
                 }
-                Instruction::Eqaulity(left, right) => Ok(Value::Number(
+                Instruction::Equality(left, right) => Ok(Value::Number(
                     (run(left, constants, variables, aliases)?
                         == run(right, constants, variables, aliases)?)
                     .into(),
