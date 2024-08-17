@@ -1,14 +1,70 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc, sync::Arc};
 
 use crate::interpreter::MolangError;
 
-#[derive(Debug, Clone, PartialEq)]
+trait MolangEq {
+    fn molang_eq(&self, rhs: &Value) -> bool;
+}
+
+#[derive(Debug, Clone)]
 pub enum Value {
     Number(f32),
     Struct(HashMap<String, Value>),
+    External(Arc<dyn External>),
     Function(Function),
     Null,
 }
+
+impl PartialEq<Value> for Value {
+    fn eq(&self, other: &Value) -> bool {
+        self.molang_eq(other)
+    }
+}
+
+impl MolangEq for Value {
+    fn molang_eq(&self, rhs: &Value) -> bool {
+        match self {
+            Value::Number(n) => {
+                if let Value::Number(rhs) = rhs {
+                    rhs == n
+                } else {
+                    false
+                }
+            }
+
+            Value::Struct(s) => {
+                if let Value::Struct(rhs) = rhs {
+                    s == rhs
+                } else {
+                    false
+                }
+            }
+            Value::External(e) => {
+                if let Value::External(rhs) = rhs {
+                    e.molang_eq(&Value::External(rhs.clone()))
+                } else {
+                    false
+                }
+            }
+            Value::Function(f) => {
+                if let Value::Function(rhs) = rhs {
+                    f == rhs
+                } else {
+                    false
+                }
+            }
+            Value::Null => {
+                if let Value::Null = rhs {
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+trait External: Debug + MolangEq {}
 
 #[derive(Clone)]
 pub struct Function {

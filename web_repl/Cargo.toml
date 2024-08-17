@@ -1,0 +1,12 @@
+[package]
+name = "web_repl"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2.92"
+molang = { path = "../" }
+console_error_panic_hook = "0.1.7"

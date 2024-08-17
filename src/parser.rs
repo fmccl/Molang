@@ -21,8 +21,9 @@ pub enum Instruction {
     Colon(Expr, Expr),
     NullishCoalescing(Expr, Expr),
     Not(Expr),
-    Equality(Expr, Expr),
+    Eqaulity(Expr, Expr),
     Assignment(Expr, Expr),
+    Return(Expr),
 }
 
 #[derive(Debug, PartialEq)]
@@ -62,14 +63,20 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
         let left = &tokens[..i];
         let right = &tokens[i + 1..];
 
-        Ok(Expr::Derived(Box::new(match op {
+        return Ok(Expr::Derived(Box::new(match op {
             Operator::Not => {
                 if !left.is_empty() {
                     return Err(CompileError::TokensBeforePrefixOperator);
                 }
                 Instruction::Not(treeify(right)?)
             }
-            Operator::Equality => Instruction::Equality(treeify(left)?, treeify(right)?),
+            Operator::Return => {
+                if !left.is_empty() {
+                    return Err(CompileError::TokensBeforePrefixOperator);
+                }
+                Instruction::Return(treeify(right)?)
+            }
+            Operator::Equality => Instruction::Eqaulity(treeify(left)?, treeify(right)?),
             Operator::Assignment => Instruction::Assignment(treeify(left)?, treeify(right)?),
             Operator::Add => Instruction::Add(treeify(left)?, treeify(right)?),
             Operator::Subtract => Instruction::Subtract(treeify(left)?, treeify(right)?),
@@ -80,10 +87,10 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
             Operator::NullishCoalescing => {
                 Instruction::NullishCoalescing(treeify(left)?, treeify(right)?)
             }
-        })))
+        })));
     } else {
         match tokens {
-            [Token::Number(n)] => Ok(Expr::Literal(Value::Number(*n))),
+            [Token::Number(n)] => return Ok(Expr::Literal(Value::Number(*n))),
             [Token::Access(accesses)] => {
                 let mut access_exprs = Vec::new();
                 for access in accesses {
@@ -109,7 +116,7 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
     }
 }
 
-fn comma_split(tokens: &[Token]) -> Vec<&[Token]> {
+fn comma_split<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token]> {
     let mut result = Vec::new();
     let mut start = 0;
 
@@ -123,7 +130,7 @@ fn comma_split(tokens: &[Token]) -> Vec<&[Token]> {
     result.push(&tokens[start..]);
 
     if let Some(last) = result.pop() {
-        if !last.is_empty() {
+        if last.len() != 0 {
             result.push(last);
         }
     }

@@ -3,9 +3,19 @@ use std::{collections::HashMap, fmt::Debug};
 use thiserror::Error;
 
 use crate::{
+    blockiser::Block,
     parser::{AccessExpr, Instruction},
     Expr, Value,
 };
+
+macro_rules! run_bubble_returns {
+    ($expr:ident, $constants:ident, $variables:ident, $aliases:ident) => {
+        match run_expr($expr, $constants, $variables, $aliases)? {
+            (rv, true) => return Ok((rv, true)),
+            a => a.0,
+        }
+    };
+}
 
 #[derive(Error, Debug)]
 pub enum MolangError {
@@ -31,14 +41,33 @@ pub enum MolangError {
     BadAccess(String, String),
 }
 
-pub fn run(
-    expr: &Expr,
+pub fn run_block(
+    block: &Block,
     constants: &HashMap<String, Value>,
     variables: &mut HashMap<String, Value>,
     aliases: &HashMap<String, String>,
 ) -> Result<Value, MolangError> {
+    if block.multiple {
+        for statement in &block.statements {
+            match run_expr(&statement, constants, variables, aliases)? {
+                (rv, true) => return Ok(rv),
+                (_, _) => {}
+            }
+        }
+        Ok(Value::Number(0.0))
+    } else {
+        Ok(run_expr(&block.statements[0], constants, variables, aliases)?.0)
+    }
+}
+
+pub fn run_expr(
+    expr: &Expr,
+    constants: &HashMap<String, Value>,
+    variables: &mut HashMap<String, Value>,
+    aliases: &HashMap<String, String>,
+) -> Result<(Value, bool), MolangError> {
     match expr {
-        Expr::Literal(expr) => Ok(expr.clone()),
+        Expr::Literal(expr) => Ok((expr.clone(), false)),
         Expr::Derived(i) => {
             let i = i.as_ref();
             match i {
@@ -46,7 +75,7 @@ pub fn run(
                 | Instruction::Subtract(left, right)
                 | Instruction::Multiply(left, right)
                 | Instruction::Divide(left, right) => {
-                    let left = match run(left, constants, variables, aliases)? {
+                    let left = match run_bubble_returns!(left, constants, variables, aliases) {
                         Value::Number(n) => n,
                         a => {
                             return Err(MolangError::TypeError(
@@ -55,7 +84,7 @@ pub fn run(
                             ))
                         }
                     };
-                    let right = match run(right, constants, variables, aliases)? {
+                    let right = match run_bubble_returns!(right, constants, variables, aliases) {
                         Value::Number(n) => n,
                         a => {
                             return Err(MolangError::TypeError(
@@ -64,13 +93,16 @@ pub fn run(
                             ))
                         }
                     };
-                    Ok(Value::Number(match i {
-                        Instruction::Add(_, _) => left + right,
-                        Instruction::Subtract(_, _) => left - right,
-                        Instruction::Multiply(_, _) => left * right,
-                        Instruction::Divide(_, _) => left / right,
-                        _ => unreachable!(),
-                    }))
+                    Ok((
+                        Value::Number(match i {
+                            Instruction::Add(_, _) => left + right,
+                            Instruction::Subtract(_, _) => left - right,
+                            Instruction::Multiply(_, _) => left * right,
+                            Instruction::Divide(_, _) => left / right,
+                            _ => unreachable!(),
+                        }),
+                        false,
+                    ))
                 }
                 Instruction::Access(accesses) => {
                     let mut current = Value::Null;
@@ -103,7 +135,9 @@ pub fn run(
                                 if let Value::Function(function) = current {
                                     let mut v_args = Vec::new();
                                     for arg in args {
-                                        v_args.push(run(arg, constants, variables, aliases)?)
+                                        v_args.push(run_bubble_returns!(
+                                            arg, constants, variables, aliases
+                                        ))
                                     }
                                     current = function.f.borrow_mut()(v_args)?;
                                 } else {
@@ -116,7 +150,7 @@ pub fn run(
                         }
                     }
 
-                    Ok(current)
+                    Ok((current, false))
                 }
                 Instruction::Assignment(left, right) => {
                     let accesses: &Vec<AccessExpr>;
@@ -147,14 +181,16 @@ pub fn run(
                                         if let Some(some_current) = variables.get_mut(name) {
                                             current = some_current;
                                             break;
-                                        } else if constants.contains_key(name) {
-                                            return Err(MolangError::NotAssignable(format!(
-                                                "Constant {name}"
-                                            )));
                                         } else {
-                                            return Err(MolangError::VariableNotFound(
-                                                name.to_string(),
-                                            ));
+                                            if constants.contains_key(name) {
+                                                return Err(MolangError::NotAssignable(format!(
+                                                    "Constant {name}"
+                                                )));
+                                            } else {
+                                                return Err(MolangError::VariableNotFound(
+                                                    format!("{name}"),
+                                                ));
+                                            }
                                         }
                                     }
                                 } else if let Value::Struct(struc) =
@@ -181,17 +217,20 @@ pub fn run(
                         }
                     }
 
-                    unsafe { *current = run(right, constants, variables, aliases)? };
+                    unsafe { *current = run_bubble_returns!(right, constants, variables, aliases) };
 
-                    Ok(unsafe { (*current).clone() })
+                    Ok((unsafe { (*current).clone() }, false))
                 }
-                Instruction::Equality(left, right) => Ok(Value::Number(
-                    (run(left, constants, variables, aliases)?
-                        == run(right, constants, variables, aliases)?)
-                    .into(),
+                Instruction::Eqaulity(left, right) => Ok((
+                    Value::Number(
+                        (run_bubble_returns!(left, constants, variables, aliases)
+                            == run_bubble_returns!(right, constants, variables, aliases))
+                        .into(),
+                    ),
+                    false,
                 )),
                 Instruction::Conditional(left, right) => {
-                    let left = match run(left, constants, variables, aliases)? {
+                    let left = match run_bubble_returns!(left, constants, variables, aliases) {
                         Value::Number(n) => n,
                         a => {
                             return Err(MolangError::TypeError(
@@ -218,22 +257,25 @@ pub fn run(
                     };
 
                     if left == 0.0 {
-                        run(if_false, constants, variables, aliases)
+                        run_expr(if_false, constants, variables, aliases)
                     } else {
-                        run(if_true, constants, variables, aliases)
+                        run_expr(if_true, constants, variables, aliases)
                     }
                 }
                 Instruction::NullishCoalescing(left, right) => {
-                    match run(left, constants, variables, aliases)? {
-                        Value::Null => run(right, constants, variables, aliases),
-                        a => Ok(a),
+                    match run_bubble_returns!(left, constants, variables, aliases) {
+                        Value::Null => Ok((
+                            run_bubble_returns!(right, constants, variables, aliases),
+                            false,
+                        )),
+                        a => Ok((a, false)),
                     }
                 }
                 Instruction::Colon(_, _) => {
                     Err(MolangError::SyntaxError("Unexpected colon".to_string()))
                 }
                 Instruction::Not(expr) => {
-                    let n = match run(expr, constants, variables, aliases)? {
+                    let n = match run_bubble_returns!(expr, constants, variables, aliases) {
                         Value::Number(n) => n,
                         a => {
                             return Err(MolangError::TypeError(
@@ -243,11 +285,15 @@ pub fn run(
                         }
                     };
                     if n == 0.0 {
-                        Ok(Value::Number(1.0))
+                        Ok((Value::Number(1.0), false))
                     } else {
-                        Ok(Value::Number(0.0))
+                        Ok((Value::Number(0.0), false))
                     }
                 }
+                Instruction::Return(expr) => Ok((
+                    run_bubble_returns!(expr, constants, variables, aliases),
+                    true,
+                )),
             }
         }
     }
