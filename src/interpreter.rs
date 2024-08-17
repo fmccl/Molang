@@ -221,7 +221,7 @@ pub fn run_expr(
 
                     Ok((unsafe { (*current).clone() }, false))
                 }
-                Instruction::Eqaulity(left, right) => Ok((
+                Instruction::Equality(left, right) => Ok((
                     Value::Number(
                         (run_bubble_returns!(left, constants, variables, aliases)
                             == run_bubble_returns!(right, constants, variables, aliases))
