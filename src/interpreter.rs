@@ -147,7 +147,9 @@ pub fn run_expr(
                                     current = constants
                                         .get(name)
                                         .or(variables.get(name))
-                                        .unwrap_or(&Value::Null)
+                                        .ok_or_else(|| {
+                                            MolangError::VariableNotFound(name.to_string())
+                                        })?
                                         .clone();
                                 } else if let Value::Struct(struc) = current {
                                     current = struc.get(name).unwrap_or(&Value::Null).clone();
