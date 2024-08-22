@@ -91,6 +91,7 @@ pub fn treeify(mut tokens: &[Token]) -> Result<Expr, CompileError> {
     } else {
         match tokens {
             [Token::Number(n)] => return Ok(Expr::Literal(Value::Number(*n))),
+            [Token::String(s)] => return Ok(Expr::Literal(Value::String(s.clone()))),
             [Token::Access(accesses)] => {
                 let mut access_exprs = Vec::new();
                 for access in accesses {

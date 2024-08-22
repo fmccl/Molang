@@ -9,6 +9,7 @@ pub trait MolangEq {
 #[derive(Debug, Clone)]
 pub enum Value {
     Number(f32),
+    String(String),
     Struct(HashMap<String, Value>),
     External(Rc<RefCell<dyn External>>),
     Function(Function),
@@ -27,6 +28,14 @@ impl MolangEq for Value {
             Value::Number(n) => {
                 if let Value::Number(rhs) = rhs {
                     rhs == n
+                } else {
+                    false
+                }
+            }
+
+            Value::String(s) => {
+                if let Value::String(rhs) = rhs {
+                    s == rhs
                 } else {
                     false
                 }

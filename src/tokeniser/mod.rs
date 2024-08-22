@@ -10,6 +10,7 @@ use crate::{
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Number(f32),
+    String(String),
     Operator(Operator),
     OpenBracket,
     CloseBracket,
@@ -137,11 +138,53 @@ impl State<char, Token, TokeniseError> for NormalState {
                 SequenceAction::Advance,
             )),
 
+            Some('"') => Ok((
+                None,
+                Some(Box::new(StringState {
+                    ..Default::default()
+                })),
+                SequenceAction::Advance,
+            )),
+
             Some(c) => Err(TokeniseError::Expectation {
                 found: c.to_string(),
                 expected: "anything else".to_string(),
             }),
             None => Ok((None, None, SequenceAction::Done)),
+        }
+    }
+}
+
+#[derive(Default)]
+struct StringState {
+    string: String,
+}
+impl State<char, Token, TokeniseError> for StringState {
+    fn handle(
+        &mut self,
+        c: Option<char>,
+    ) -> Result<
+        (
+            Option<Token>,
+            Option<Box<dyn State<char, Token, TokeniseError>>>,
+            SequenceAction,
+        ),
+        TokeniseError,
+    > {
+        match c {
+            Some('"') => Ok((
+                Some(Token::String(self.string.clone())),
+                Some(Box::new(NormalState {})),
+                SequenceAction::Advance,
+            )),
+            Some(c) => {
+                self.string.push(c);
+                Ok((None, None, SequenceAction::Advance))
+            }
+            None => Err(TokeniseError::Expectation {
+                found: "EOF".to_string(),
+                expected: "\"".to_string(),
+            }),
         }
     }
 }
